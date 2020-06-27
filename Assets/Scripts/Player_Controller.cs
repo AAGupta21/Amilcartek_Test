@@ -4,42 +4,39 @@ using UnityEngine;
 
 public class Player_Controller : MonoBehaviour
 {
-    [SerializeField] private GameObject Ghost_Ball_Prefab = null;
-    [SerializeField] private int Num_Of_Ghost_Ball = 5;
+    [SerializeField] private int Line_Accuracy = 5;
     [SerializeField] private float Time_Diff = 0.05f;
+    [SerializeField] private LineRenderer Pathway_object = null;
 
     [SerializeField] private GameObject Projectile_Ball_Prefab = null;
-    [SerializeField] private float Max_Projectile_Ball_Force = 10f;
-    [SerializeField] private float Min_Projectile_Ball_Force = 2f;
-    [SerializeField] private float Max_Distance_From_Projectile = 0.5f;
-    [SerializeField] private float Min_Distance_From_Projectile = 0f;
+    [SerializeField] private float Max_Projectile_Z_Angle = 75f;
+    [SerializeField] private float Max_Input_Angle = 0.5f;
+    [SerializeField] private float Initial_Projectile_Speed = 20f;
 
     [HideInInspector] public Vector3 Initial_Projectile_Position = Vector3.zero;
 
     private bool IsPlayersMove = false;
     private bool IsPlayersMoveBegunMouse = false;
     private bool IsPlayersMoveBegunTouch = false;
-    private List<GameObject> GhostBall_List = null;
+    private bool IsAPathDrawn = false;
+    private Vector3[] PathwayArray = null;
     private GameObject ProjectileBall = null;
     private Vector3 direc = Vector3.zero;
-    private float Projectile_Force_val = 0f;
-    private bool IsOnPause = false;
+    private Vector3 Ini_Pos = Vector3.zero;
+    private Vector3 Final_Pos = Vector3.zero;
 
+    private bool IsOnPause = false;
+    
     public delegate void TurnExpendedByPlayerEventHandler();
     public event TurnExpendedByPlayerEventHandler TurnExpended;
 
     public void InitiatePlayer()
     {
-        GhostBall_List = new List<GameObject>();
-        for(int i = 0; i < Num_Of_Ghost_Ball; i++)
-        {
-            GameObject g = Instantiate(Ghost_Ball_Prefab, Vector3.zero, Quaternion.identity, transform);
-            g.SetActive(false);
-            GhostBall_List.Add(g);
-        }
-        
+        Ui_Controller.ButtonHasBeenPressedEventHandler += BallLaunchButtonPressRequest;
+        PathwayArray = new Vector3[Line_Accuracy];
         ProjectileBall = Instantiate(Projectile_Ball_Prefab, Vector3.zero, Quaternion.identity, transform);
         ProjectileBall.SetActive(false);
+        Pathway_object.positionCount = Line_Accuracy;
     }
 
     public void Start_Play()
@@ -49,7 +46,7 @@ public class Player_Controller : MonoBehaviour
         ProjectileBall.GetComponent<Rigidbody>().angularVelocity = Vector3.zero;
         ProjectileBall.transform.position = Initial_Projectile_Position;
         ProjectileBall.SetActive(true);
-        IsOnPause = false;
+        IsOnPause = IsAPathDrawn = false;
         IsPlayersMove = true;
     }
 
@@ -58,7 +55,7 @@ public class Player_Controller : MonoBehaviour
         Time.timeScale = 1f;
         StopAllCoroutines();
         IsPlayersMove = IsPlayersMoveBegunMouse = IsPlayersMoveBegunTouch = false;
-        Deactivate_Ghost_Balls();
+        Deactivate_Line();
         ProjectileBall.SetActive(false);
     }
 
@@ -70,7 +67,7 @@ public class Player_Controller : MonoBehaviour
 
         if(IsPlayersMoveBegunMouse || IsPlayersMoveBegunTouch)
         {
-            Deactivate_Ghost_Balls();
+            Deactivate_Line();
             IsPlayersMoveBegunMouse = IsPlayersMoveBegunTouch = false;
         }
     }
@@ -84,86 +81,118 @@ public class Player_Controller : MonoBehaviour
 
     private void Update()
     {
-        if(!IsOnPause)
+        if (!IsOnPause)
         {
-            if (IsPlayersMove && (Input.GetMouseButton(0) || Input.touchCount > 0))
+            if (IsPlayersMove && ((Input.GetMouseButtonDown(0) || Input.touchCount > 0 )))
             {
-                Vector3 input_Pos = Vector3.zero;
-
                 if (Input.touchCount > 0)
                 {
+                    Vector3 p = Input.touches[0].position;
+                    p.z = 10f;
+                    Ini_Pos = Camera.main.ScreenToWorldPoint(p);
                     IsPlayersMoveBegunTouch = true;
-                    input_Pos = Camera.main.ScreenToWorldPoint(Input.touches[0].position);
                 }
                 else
                 {
+                    Vector3 p = Input.mousePosition;
+                    p.z = 10f;
+                    Ini_Pos = Camera.main.ScreenToWorldPoint(p);
                     IsPlayersMoveBegunMouse = true;
-                    input_Pos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
                 }
-
-                input_Pos.z = 0f;
-
-                if (!GhostBall_List[0].activeInHierarchy)
-                {
-                    Activate_Ghost_Balls();
-                }
-
-                direc = (Initial_Projectile_Position - input_Pos).normalized;
-
-                float angle = Vector3.SignedAngle(Vector3.right, direc, Vector3.forward);
-
-                Projectile_Force_val = Mathf.Lerp(Min_Projectile_Ball_Force, Max_Projectile_Ball_Force,
-                    Vector3.Distance(Initial_Projectile_Position, input_Pos) / (Max_Distance_From_Projectile - Min_Distance_From_Projectile));
-
-                DrawGhostBalls(Projectile_Force_val, angle);
             }
 
-            if ((IsPlayersMoveBegunMouse && Input.GetMouseButtonUp(0)) || (IsPlayersMoveBegunTouch && Input.touchCount == 0))
+            if ( (IsPlayersMoveBegunMouse && Input.GetMouseButtonUp(0)) || ( IsPlayersMoveBegunTouch && Input.touchCount == 0))
             {
-                IsPlayersMove = IsPlayersMoveBegunMouse = IsPlayersMoveBegunTouch = false;
-                Deactivate_Ghost_Balls();
-                LaunchBall(direc, Projectile_Force_val);
+                if(IsPlayersMoveBegunMouse)
+                {
+                    Vector3 p = Input.mousePosition;
+                    p.z = 10f;
+                    Final_Pos = Camera.main.ScreenToWorldPoint(p);
+                }
+                else
+                {
+                    Vector3 p = Input.touches[Input.touches.Length - 1].position;
+                    p.z = 10f;
+                    Final_Pos = Camera.main.ScreenToWorldPoint(p);
+                }
+
+                float Z_angle = Mathf.Lerp(0f, Max_Projectile_Z_Angle, Vector3.Distance(Ini_Pos, Final_Pos) / Max_Input_Angle);
+
+                direc = (Final_Pos - Ini_Pos).normalized;
+
+                float AngleOfXY = Vector3.SignedAngle(Vector3.right, direc, Vector3.right);
+                
+                direc = Quaternion.Euler(0f, 90f - Z_angle, 0f) * direc;
+                
+                DrawGhostPath(AngleOfXY, 90f - Z_angle);
+
+                IsPlayersMoveBegunMouse = IsPlayersMoveBegunTouch = false;
             }
         }
     }
 
-    private void DrawGhostBalls(float force_val, float angle)
+    private void DrawGhostPath(float AngleWithXY, float AngleWithXZ)
     {
-        for(int i = 1; i <= Num_Of_Ghost_Ball; i++)
+        for(int i = 0; i < Line_Accuracy; i++)
         {
-            GhostBall_List[i - 1].transform.position = Initial_Projectile_Position +  new Vector3
-                (i * Time_Diff * force_val * Mathf.Cos(angle * Mathf.Deg2Rad), 
-                (i * Time_Diff * force_val * Mathf.Sin(angle * Mathf.Deg2Rad)) - (i * Time_Diff * i * Time_Diff * 0.5f * Physics.gravity.magnitude), 
-                0f);
+            PathwayArray[i] = Initial_Projectile_Position +
+                new Vector3(i * Time_Diff * Initial_Projectile_Speed * Mathf.Cos(AngleWithXY * Mathf.Deg2Rad) * Mathf.Cos(AngleWithXZ * Mathf.Deg2Rad),
+                 i * Time_Diff * Initial_Projectile_Speed * Mathf.Sin(AngleWithXY * Mathf.Deg2Rad) - 0.5f * Physics.gravity.magnitude * i * Time_Diff * i * Time_Diff,
+                 i * Time_Diff * Initial_Projectile_Speed * Mathf.Cos(AngleWithXY * Mathf.Deg2Rad) * Mathf.Sin(AngleWithXZ * Mathf.Deg2Rad));
+
+            if(PathwayArray[i].z < 0f)
+            {
+                PathwayArray[i] = new Vector3(PathwayArray[i].x, PathwayArray[i].y, -(PathwayArray[i].z));
+            }
+        }
+        Pathway_object.SetPositions(PathwayArray);
+        if(!IsAPathDrawn)
+        {
+            IsAPathDrawn = true;
+            Activate_Line();
         }
     }
 
-    private void LaunchBall(Vector3 direc, float force)
+    private void LaunchBall(Vector3 direc)
     {
+        if(direc.z < 0f)
+        {
+            direc = new Vector3(direc.x, direc.y, -direc.z);
+        }
+
         ProjectileBall.GetComponent<Rigidbody>().useGravity = true;
-        ProjectileBall.GetComponent<Rigidbody>().AddForce(direc * force, ForceMode.Impulse);
+        ProjectileBall.GetComponent<Rigidbody>().velocity = direc * Initial_Projectile_Speed;
         StartCoroutine(BallLaunch());
     }
 
     private IEnumerator BallLaunch()
     {
-        yield return new WaitForSeconds(3f);
+        yield return new WaitForSeconds(5f);
         TurnExpended?.Invoke();
     }
 
-    private void Deactivate_Ghost_Balls()
+    private void BallLaunchButtonPressRequest()
     {
-        foreach(GameObject g in GhostBall_List)
+        if(IsAPathDrawn)
         {
-            g.SetActive(false);
+            IsPlayersMoveBegunMouse = IsPlayersMoveBegunTouch = IsPlayersMove = false;
+            Deactivate_Line();
+            LaunchBall(direc);
         }
     }
 
-    private void Activate_Ghost_Balls()
+    private void Deactivate_Line()
     {
-        foreach(GameObject g in GhostBall_List)
-        {
-            g.SetActive(true);
-        }
+        Pathway_object.gameObject.SetActive(false);
+    }
+
+    private void Activate_Line()
+    {
+        Pathway_object.gameObject.SetActive(true);
+    }
+
+    private void OnDisable()
+    {
+        Ui_Controller.ButtonHasBeenPressedEventHandler -= BallLaunchButtonPressRequest;
     }
 }

@@ -15,6 +15,10 @@ public class Ui_Controller : MonoBehaviour
     [SerializeField] private Text lives_cnt = null;
     [SerializeField] private Text MusicInfo = null;
 
+    public delegate void ButtonPressed();
+
+    public static event ButtonPressed ButtonHasBeenPressedEventHandler;
+    
     public void Ini_MainMenu()
     {
         DeactivateAllUI();
@@ -66,6 +70,11 @@ public class Ui_Controller : MonoBehaviour
         {
             MusicInfo.text = "MUSIC : OFF";
         }
+    }
+
+    public void PressedShootBallButton()
+    {
+        ButtonHasBeenPressedEventHandler?.Invoke();
     }
 
     private void DeactivateAllUI()

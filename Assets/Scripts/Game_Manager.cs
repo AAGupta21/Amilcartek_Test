@@ -39,6 +39,11 @@ public class Game_Manager : MonoBehaviour
         uc.Ini_PauseMenu();
     }
 
+    public void ShootButtonPressed()
+    {
+        uc.PressedShootBallButton();
+    }
+
     public void ResumeButtonPressed()
     {
         uc.Ini_PlayMenu();
