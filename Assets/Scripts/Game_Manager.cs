@@ -55,7 +55,7 @@ public class Game_Manager : MonoBehaviour
         pc.Stop_Play();
         lc.DeactivateCurrLevel(curr_level);
 
-        if (curr_level == 2)
+        if (curr_level == 1)
         {
             curr_level = 0;
             uc.Ini_MainMenu();
